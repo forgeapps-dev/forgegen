@@ -59,31 +59,45 @@ Beat detection → funscript is a solved problem. The pipeline is deterministic 
 
 ---
 
-## The Broader Picture
+## Product boundary
 
-Music→haptics is the demo. The same engine handles:
+```
+forgegen       = GENERATES funscripts   (audio/video → funscript)
+FunScriptForge = EDITS funscripts       (funscript → tone → shape → export)
+```
 
-| Input | Use Case | Notes |
+forgegen never requires an existing funscript. FunScriptForge never generates from scratch.
+They are independent tools with a clean handoff: forgegen's output is FunScriptForge's input.
+
+---
+
+## Three first-class input paths
+
+```
+Audio only        →  funscript    music, beat track, any audio file — no video needed
+Video only        →  funscript    motion-driven, optical flow + keypoints
+Audio + Video     →  funscript    hybrid, user controls which dominates per segment
+```
+
+Audio is not a companion to video. It is an equal first-class path.
+
+| Input | Use Case | Pipeline |
 |---|---|---|
-| Music (MP3) | Feel the music | The demo. SFW. Universal. |
-| Beat track | Sync haptics to rhythm content | Audio-locked precision |
-| Video | Sync haptics to motion | Full pipeline with optional LLM semantic layer |
-| Video + Audio | Hybrid — best of both | Weighted blend, user controls dominance |
-| Video + Audio + Captions | Semantic haptics | Language meaning shapes the pattern |
-| Existing funscript | Tone / reshape | FunScriptForge workflow |
+| Audio only | Music → haptics. The SFW demo. Universal. | Pure DSP — beat, energy, spectral. Fast. No LLM needed. |
+| Video only | Motion-driven generation | Optical flow, keypoints, motion segmentation |
+| Audio + Video | Hybrid | Weighted blend, LLM arbitration on per-segment dominance |
+| Audio + Video + Captions | Semantic haptics | Language meaning shapes the pattern |
 
-Every path ends in the same place: a funscript, exported to any device.
+Every path produces a funscript. Device fan-out happens in FunScriptForge at export.
 
 ---
 
 ## The Stack
 
 ```
-forgegen (generation engine)
-    ↓ produces
-funscript
-    ↓ toned and shaped by
-FunScriptForge (authoring tool)
+forgegen (generation — audio/video → funscript)
+    ↓ output funscript handed to
+FunScriptForge (authoring — funscript → tone → shape → export)
     ↓ exported to
 Device folders (Handy / OSR2 / estim-foc / estim-stereo / ...)
     ↓ published to
@@ -97,33 +111,29 @@ Together they are the complete path from any media to any haptic device.
 
 ---
 
-## forgegen App — Music Haptics Tab
+## forgegen App — Input scenarios
 
-The music→haptics use case deserves a first-class tab in the forgegen app:
+The forgegen app handles three input scenarios. All three are first-class.
 
-```
-[ Media ]  [ Generate ]  [ Preview ]  [ Export ]
-```
+**Scenario 1: Audio only**
+- Drop a music file (MP3, WAV, FLAC)
+- Instant BPM + waveform displayed on load
+- Style cards (same vocabulary as FunScriptForge Tone)
+- [ Generate ] → funscript plotly builds in real time
+- Preview: music + funscript play together, beats visible as pulses
+- [ Open in FunScriptForge ] or [ Export directly ]
 
-**Media tab:**
-- Drop music file (MP3, WAV, FLAC)
-- Optional: drop video to sync playback with
-- Instant waveform + BPM detection on load
+**Scenario 2: Video only**
+- Drop a video file
+- Motion analysis runs on load (background)
+- Style cards + intensity slider
+- [ Generate ] → funscript from motion
 
-**Generate tab:**
-- Tone selection (same six cards as FunScriptForge)
-- One slider: Energy sensitivity (how hard the drops hit)
-- [ Generate ] button
-- Shows funscript plotly + heatmap as it builds
-
-**Preview tab:**
-- Play music + funscript simultaneously
-- Waveform aligned with funscript timeline
-- See beats → haptic pulses in real time
-
-**Export tab:**
-- Device selection (or all)
-- Standard export to output folder
+**Scenario 3: Audio + Video**
+- Drop both
+- Both heatmaps displayed on same time axis (comparable)
+- Per-segment dominance: Audio / Video / Hybrid slider
+- [ Generate ] → blended funscript
 
 ---
 
