@@ -113,8 +113,9 @@ def _energy_chart(beat_map, modes):
 
 
 def _funscript_chart(curve):
-    """Line chart of the generated funscript position curve."""
+    """Position curve + velocity heatmap strip, stacked."""
     import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
 
     if not curve:
         return go.Figure()
@@ -122,32 +123,97 @@ def _funscript_chart(curve):
     times = [t / 1000 for t, _ in curve]
     positions = [p for _, p in curve]
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=times,
-        y=positions,
-        mode="lines",
-        line=dict(color="#ff7043", width=1.5),
-        hovertemplate="<b>%{x:.2f}s</b><br>pos: %{y}<extra></extra>",
-    ))
+    # --- velocity per action (units: positions / second) ---
+    velocities = [0.0]
+    for i in range(1, len(curve)):
+        dt = (curve[i][0] - curve[i - 1][0]) / 1000  # seconds
+        dp = abs(curve[i][1] - curve[i - 1][1])
+        velocities.append(dp / dt if dt > 0 else 0.0)
+
+    # Bucket the velocity into N time bins for the heatmap strip
+    n_bins = min(500, len(curve))
+    duration = times[-1] if times else 1
+    bin_width = duration / n_bins
+    bucket_vel = [0.0] * n_bins
+    for t, v in zip(times, velocities):
+        idx = min(int(t / bin_width), n_bins - 1)
+        bucket_vel[idx] = max(bucket_vel[idx], v)
+
+    # Colour scale: 0 pos/s = blue, 150 = teal, 300 = green, 500 = yellow, 700+ = red
+    fig = make_subplots(
+        rows=2, cols=1,
+        row_heights=[0.18, 0.82],
+        vertical_spacing=0.04,
+    )
+
+    # Heatmap strip (row 1)
+    bin_centers = [(i + 0.5) * bin_width for i in range(n_bins)]
+    fig.add_trace(
+        go.Bar(
+            x=bin_centers,
+            y=[1] * n_bins,
+            marker=dict(
+                color=bucket_vel,
+                colorscale=[
+                    [0.0,  "#1565c0"],   # blue   — stopped
+                    [0.15, "#00897b"],   # teal   — slow
+                    [0.35, "#43a047"],   # green  — moderate
+                    [0.60, "#f9a825"],   # yellow — fast
+                    [1.0,  "#e53935"],   # red    — very fast
+                ],
+                cmin=0,
+                cmax=700,
+                showscale=False,
+            ),
+            width=bin_width,
+            hovertemplate="<b>%{x:.2f}s</b><br>peak vel: %{marker.color:.0f} pos/s<extra></extra>",
+        ),
+        row=1, col=1,
+    )
+
+    # Position curve (row 2)
+    fig.add_trace(
+        go.Scatter(
+            x=times,
+            y=positions,
+            mode="lines",
+            line=dict(color="#ff7043", width=1.5),
+            hovertemplate="<b>%{x:.2f}s</b><br>pos: %{y}<extra></extra>",
+        ),
+        row=2, col=1,
+    )
 
     fig.update_layout(
-        height=200,
+        height=260,
         margin=dict(l=0, r=0, t=4, b=0),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
-        xaxis=dict(
-            title="time (s)",
-            color="#aaa",
-            gridcolor="rgba(255,255,255,0.06)",
-        ),
-        yaxis=dict(
-            title="position",
-            range=[0, 100],
-            color="#aaa",
-            gridcolor="rgba(255,255,255,0.06)",
-        ),
+        bargap=0,
+    )
+    fig.update_xaxes(
+        color="#aaa",
+        gridcolor="rgba(255,255,255,0.06)",
+        showticklabels=False,
+        row=1, col=1,
+    )
+    fig.update_yaxes(
+        showticklabels=False,
+        showgrid=False,
+        row=1, col=1,
+    )
+    fig.update_xaxes(
+        title="time (s)",
+        color="#aaa",
+        gridcolor="rgba(255,255,255,0.06)",
+        row=2, col=1,
+    )
+    fig.update_yaxes(
+        title="position",
+        range=[0, 100],
+        color="#aaa",
+        gridcolor="rgba(255,255,255,0.06)",
+        row=2, col=1,
     )
     return fig
 
@@ -258,10 +324,30 @@ def render() -> None:
 
         if st.session_state.funscript_bytes:
             stem = Path(st.session_state.audio_name).stem or "output"
-            st.download_button(
-                label="💾 Download .funscript",
+            filename = f"{stem}.funscript"
+
+            col_save, col_dl = st.columns(2)
+
+            # Save to disk
+            if col_save.button("💾 Save to folder", use_container_width=True, type="primary"):
+                out_dir = Path(st.session_state.output_dir)
+                try:
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                    out_path = out_dir / filename
+                    out_path.write_bytes(st.session_state.funscript_bytes)
+                    st.session_state.saved_path = str(out_path)
+                except Exception as exc:
+                    st.error(f"Save failed: {exc}")
+
+            # Browser download
+            col_dl.download_button(
+                label="⬇ Download",
                 data=st.session_state.funscript_bytes,
-                file_name=f"{stem}.funscript",
+                file_name=filename,
                 mime="application/json",
                 use_container_width=True,
             )
+
+            # Show saved path
+            if st.session_state.saved_path:
+                st.success(f"Saved → `{st.session_state.saved_path}`")
